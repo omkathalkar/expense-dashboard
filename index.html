@@ -12,7 +12,11 @@
     --border: #2a2e37;
     --text: #e8e9ec;
     --muted: #9aa0ab;
-    --accent: #1E6B3C;
+    --green: #1E6B3C;
+    --blue: #1A5276;
+    --red: #922B21;
+    --pos: #27AE60;
+    --neg: #E74C3C;
   }
   * { box-sizing: border-box; }
   body {
@@ -26,6 +30,12 @@
   .sub { color: var(--muted); margin-bottom: 24px; font-size: 14px; }
   .grid {
     display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .grid-2 {
+    display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     gap: 16px;
     margin-bottom: 24px;
@@ -36,8 +46,13 @@
     border-radius: 12px;
     padding: 16px;
   }
-  .card h2 { font-size: 14px; color: var(--muted); margin: 0 0 8px; font-weight: 500; }
-  .stat { font-size: 28px; font-weight: 600; }
+  .card h2 { font-size: 13px; color: var(--muted); margin: 0 0 8px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.4px; }
+  .stat { font-size: 26px; font-weight: 600; }
+  .stat.income { color: var(--pos); }
+  .stat.expense { color: #e8e9ec; }
+  .stat.positive { color: var(--pos); }
+  .stat.negative { color: var(--neg); }
+  .divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
   form { display: flex; gap: 8px; flex-wrap: wrap; }
   input, select, button {
     background: #0f1115;
@@ -48,16 +63,23 @@
     font-size: 14px;
   }
   input, select { flex: 1; min-width: 100px; }
-  button {
-    background: var(--accent);
-    border: none;
-    cursor: pointer;
-    font-weight: 600;
-  }
+  button { border: none; cursor: pointer; font-weight: 600; white-space: nowrap; }
+  .btn-expense { background: var(--green); }
+  .btn-income  { background: var(--blue); }
   button:hover { opacity: 0.9; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
   th { color: var(--muted); font-weight: 500; }
+  .tag {
+    display: inline-block;
+    font-size: 11px;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+  }
+  .tag-expense { background: rgba(30,107,60,0.25); color: #5DBE85; }
+  .tag-income  { background: rgba(26,82,118,0.3);  color: #5DADE2; }
   .status { font-size: 13px; color: var(--muted); margin-top: 8px; min-height: 16px; }
   canvas { max-height: 260px; }
 </style>
@@ -67,28 +89,64 @@
 <h1>Expense Dashboard</h1>
 <div class="sub" id="lastUpdated">Loading…</div>
 
+<!-- Stats: income row -->
 <div class="grid">
   <div class="card">
+    <h2>Total earned (all time)</h2>
+    <div class="stat income" id="earnedAll">–</div>
+  </div>
+  <div class="card">
+    <h2>Total earned (this month)</h2>
+    <div class="stat income" id="earnedMonth">–</div>
+  </div>
+  <div class="card">
     <h2>Total spent (all time)</h2>
-    <div class="stat" id="totalAll">–</div>
+    <div class="stat expense" id="totalAll">–</div>
   </div>
   <div class="card">
     <h2>Total spent (this month)</h2>
-    <div class="stat" id="totalMonth">–</div>
-  </div>
-  <div class="card">
-    <h2>Add an expense</h2>
-    <form id="addForm">
-      <input type="number" step="0.01" id="amount" placeholder="Amount" required>
-      <select id="category"><option value="">Category…</option></select>
-      <input type="text" id="note" placeholder="Note">
-      <button type="submit">Add</button>
-    </form>
-    <div class="status" id="addStatus"></div>
+    <div class="stat expense" id="totalMonth">–</div>
   </div>
 </div>
 
-<div class="grid">
+<!-- Stats: net balance row -->
+<div class="grid" style="margin-bottom:24px">
+  <div class="card">
+    <h2>Net balance (all time)</h2>
+    <div class="stat" id="netAll">–</div>
+  </div>
+  <div class="card">
+    <h2>Net balance (this month)</h2>
+    <div class="stat" id="netMonth">–</div>
+  </div>
+</div>
+
+<!-- Add forms -->
+<div class="grid-2">
+  <div class="card">
+    <h2>Add an expense</h2>
+    <form id="addForm">
+      <input type="number" step="0.01" id="amount" placeholder="Amount (€)" required>
+      <select id="category"><option value="">Category…</option></select>
+      <input type="text" id="note" placeholder="Note">
+      <button type="submit" class="btn-expense">Add</button>
+    </form>
+    <div class="status" id="addStatus"></div>
+  </div>
+  <div class="card">
+    <h2>Add income / salary credit</h2>
+    <form id="incomeForm">
+      <input type="number" step="0.01" id="incomeAmount" placeholder="Amount (€)" required>
+      <input type="text"   id="incomeSource" placeholder="Source (e.g. Salary)">
+      <input type="text"   id="incomeNote"   placeholder="Note">
+      <button type="submit" class="btn-income">Add</button>
+    </form>
+    <div class="status" id="incomeStatus"></div>
+  </div>
+</div>
+
+<!-- Charts -->
+<div class="grid-2">
   <div class="card">
     <h2>Spend by category</h2>
     <canvas id="categoryChart"></canvas>
@@ -99,154 +157,173 @@
   </div>
 </div>
 
+<!-- Transactions table -->
 <div class="card">
   <h2>Recent transactions</h2>
   <table>
-    <thead><tr><th>Date</th><th>Amount</th><th>Category</th><th>Note</th></tr></thead>
+    <thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Category / Source</th><th>Note</th></tr></thead>
     <tbody id="txnBody"></tbody>
   </table>
 </div>
 
 <script>
-  // ⚠️ Replace this with your deployed Apps Script Web App URL (ends in /exec)
   const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxF1zOBRLqrZHXRcjDJkZpAHdsjeCDZIEsU5NRBldUsNdsGfcnKGOk9s8zLH3P--h9Y/exec';
 
   let categoryChart, timeChart;
+  let _expenses = [], _income = [];
 
-  // JSONP helper — avoids CORS issues between GitHub Pages and Apps Script
   function jsonp(url, params) {
     return new Promise((resolve, reject) => {
       const cbName = 'cb_' + Math.random().toString(36).slice(2);
-      const query = new URLSearchParams({ ...params, callback: cbName }).toString();
+      const query  = new URLSearchParams({ ...params, callback: cbName }).toString();
       const script = document.createElement('script');
-      window[cbName] = (data) => {
-        resolve(data);
-        delete window[cbName];
-        script.remove();
-      };
+      window[cbName] = (data) => { resolve(data); delete window[cbName]; script.remove(); };
       script.onerror = () => reject(new Error('Request failed'));
       script.src = url + '?' + query;
       document.body.appendChild(script);
     });
   }
 
-  function money(n) {
-    return n.toFixed(2) + ' €';
+  function money(n) { return n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'; }
+
+  function setNet(id, val) {
+    const el = document.getElementById(id);
+    el.textContent = (val >= 0 ? '+' : '') + money(val);
+    el.className   = 'stat ' + (val >= 0 ? 'positive' : 'negative');
   }
 
-  function render(expenses) {
-    const now = new Date();
+  function render() {
+    const expenses = _expenses;
+    const income   = _income;
+    const now      = new Date();
     const monthKey = now.getFullYear() + '-' + now.getMonth();
 
-    let totalAll = 0, totalMonth = 0;
-    const byCategory = {};
-    const byDay = {};
+    let totalAll = 0, totalMonth = 0, earnedAll = 0, earnedMonth = 0;
+    const byCategory = {}, byDay = {};
 
     expenses.forEach(exp => {
       const d = new Date(exp.date);
       totalAll += exp.amount;
-      if (d.getFullYear() + '-' + d.getMonth() === monthKey) {
-        totalMonth += exp.amount;
-      }
+      if (d.getFullYear() + '-' + d.getMonth() === monthKey) totalMonth += exp.amount;
       byCategory[exp.category] = (byCategory[exp.category] || 0) + exp.amount;
       const dayKey = d.toISOString().slice(0, 10);
       byDay[dayKey] = (byDay[dayKey] || 0) + exp.amount;
     });
 
-    document.getElementById('totalAll').textContent = money(totalAll);
-    document.getElementById('totalMonth').textContent = money(totalMonth);
-    document.getElementById('lastUpdated').textContent =
-      expenses.length + ' transactions · updated ' + now.toLocaleTimeString();
+    income.forEach(inc => {
+      const d = new Date(inc.date);
+      earnedAll += inc.amount;
+      if (d.getFullYear() + '-' + d.getMonth() === monthKey) earnedMonth += inc.amount;
+    });
 
-    // Category pie chart
+    document.getElementById('totalAll').textContent   = money(totalAll);
+    document.getElementById('totalMonth').textContent = money(totalMonth);
+    document.getElementById('earnedAll').textContent   = money(earnedAll);
+    document.getElementById('earnedMonth').textContent = money(earnedMonth);
+    setNet('netAll',   earnedAll   - totalAll);
+    setNet('netMonth', earnedMonth - totalMonth);
+
+    document.getElementById('lastUpdated').textContent =
+      expenses.length + ' expenses · ' + income.length + ' income entries · updated ' + now.toLocaleTimeString();
+
+    // Category pie
     const catLabels = Object.keys(byCategory);
     const catValues = Object.values(byCategory);
     if (categoryChart) categoryChart.destroy();
     categoryChart = new Chart(document.getElementById('categoryChart'), {
       type: 'pie',
-      data: {
-        labels: catLabels,
-        datasets: [{ data: catValues }]
-      },
+      data: { labels: catLabels, datasets: [{ data: catValues }] },
       options: { plugins: { legend: { labels: { color: '#e8e9ec' } } } }
     });
 
-    // Time line chart, sorted by date
+    // Time line
     const dayLabels = Object.keys(byDay).sort();
     const dayValues = dayLabels.map(d => byDay[d]);
     if (timeChart) timeChart.destroy();
     timeChart = new Chart(document.getElementById('timeChart'), {
       type: 'line',
-      data: {
-        labels: dayLabels,
-        datasets: [{ label: 'Spend', data: dayValues, borderColor: '#1E6B3C', tension: 0.3 }]
-      },
+      data: { labels: dayLabels, datasets: [{ label: 'Spend', data: dayValues, borderColor: '#1E6B3C', tension: 0.3 }] },
       options: {
-        scales: {
-          x: { ticks: { color: '#9aa0ab' } },
-          y: { ticks: { color: '#9aa0ab' } }
-        },
+        scales: { x: { ticks: { color: '#9aa0ab' } }, y: { ticks: { color: '#9aa0ab' } } },
         plugins: { legend: { display: false } }
       }
     });
 
-    // Recent transactions table (most recent first)
-    const sorted = [...expenses].sort((a, b) => new Date(b.date) - new Date(a.date));
-    document.getElementById('txnBody').innerHTML = sorted.slice(0, 15).map(exp => `
+    // Combined transactions table
+    const combined = [
+      ...expenses.map(e => ({ ...e, type: 'expense', label: e.category })),
+      ...income.map(i  => ({ ...i, type: 'income',  label: i.source   }))
+    ].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    document.getElementById('txnBody').innerHTML = combined.slice(0, 20).map(row => `
       <tr>
-        <td>${new Date(exp.date).toLocaleDateString()}</td>
-        <td>${money(exp.amount)}</td>
-        <td>${exp.category}</td>
-        <td>${exp.note || ''}</td>
+        <td>${new Date(row.date).toLocaleDateString()}</td>
+        <td><span class="tag tag-${row.type}">${row.type === 'income' ? 'Income' : 'Expense'}</span></td>
+        <td style="color:${row.type === 'income' ? 'var(--pos)' : 'var(--text)'}">${row.type === 'income' ? '+' : '-'}${money(row.amount)}</td>
+        <td>${row.label}</td>
+        <td>${row.note || ''}</td>
       </tr>
     `).join('');
   }
 
   function loadData() {
-    jsonp(SCRIPT_URL, { action: 'list' })
-      .then(res => {
-        if (res.status === 'ok') render(res.data);
-        else document.getElementById('lastUpdated').textContent = 'Error: ' + res.message;
-      })
-      .catch(err => {
-        document.getElementById('lastUpdated').textContent = 'Failed to load: ' + err.message;
-      });
+    return jsonp(SCRIPT_URL, { action: 'list' }).then(res => {
+      if (res.status === 'ok') { _expenses = res.data; render(); }
+      else document.getElementById('lastUpdated').textContent = 'Error: ' + res.message;
+    }).catch(err => {
+      document.getElementById('lastUpdated').textContent = 'Failed to load: ' + err.message;
+    });
   }
 
-  document.getElementById('addForm').addEventListener('submit', (e) => {
-    e.preventDefault();
-    const amount = document.getElementById('amount').value;
-    const category = document.getElementById('category').value || 'Uncategorized';
-    const note = document.getElementById('note').value;
-    const statusEl = document.getElementById('addStatus');
-    statusEl.textContent = 'Saving…';
-
-    jsonp(SCRIPT_URL, { action: 'add', amount, category, note })
-      .then(res => {
-        statusEl.textContent = res.status === 'ok' ? 'Added ✓' : 'Error: ' + res.message;
-        document.getElementById('addForm').reset();
-        loadData();
-      })
-      .catch(err => { statusEl.textContent = 'Failed: ' + err.message; });
-  });
+  function loadIncome() {
+    return jsonp(SCRIPT_URL, { action: 'list_income' }).then(res => {
+      if (res.status === 'ok') { _income = res.data; render(); }
+    }).catch(() => {});
+  }
 
   function loadCategories() {
-    jsonp(SCRIPT_URL, { action: 'categories' })
-      .then(res => {
-        if (res.status !== 'ok') return;
-        const select = document.getElementById('category');
-        res.categories.forEach(cat => {
-          const opt = document.createElement('option');
-          opt.value = cat;
-          opt.textContent = cat;
-          select.appendChild(opt);
-        });
-      })
-      .catch(() => {});
+    jsonp(SCRIPT_URL, { action: 'categories' }).then(res => {
+      if (res.status !== 'ok') return;
+      const select = document.getElementById('category');
+      res.categories.forEach(cat => {
+        const opt = document.createElement('option');
+        opt.value = cat; opt.textContent = cat;
+        select.appendChild(opt);
+      });
+    }).catch(() => {});
   }
+
+  document.getElementById('addForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const amount   = document.getElementById('amount').value;
+    const category = document.getElementById('category').value || 'Uncategorized';
+    const note     = document.getElementById('note').value;
+    const statusEl = document.getElementById('addStatus');
+    statusEl.textContent = 'Saving…';
+    jsonp(SCRIPT_URL, { action: 'add', amount, category, note }).then(res => {
+      statusEl.textContent = res.status === 'ok' ? 'Added ✓' : 'Error: ' + res.message;
+      document.getElementById('addForm').reset();
+      loadData();
+    }).catch(err => { statusEl.textContent = 'Failed: ' + err.message; });
+  });
+
+  document.getElementById('incomeForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const amount   = document.getElementById('incomeAmount').value;
+    const source   = document.getElementById('incomeSource').value || 'Salary';
+    const note     = document.getElementById('incomeNote').value;
+    const statusEl = document.getElementById('incomeStatus');
+    statusEl.textContent = 'Saving…';
+    jsonp(SCRIPT_URL, { action: 'add_income', amount, source, note }).then(res => {
+      statusEl.textContent = res.status === 'ok' ? 'Added ✓' : 'Error: ' + res.message;
+      document.getElementById('incomeForm').reset();
+      loadIncome();
+    }).catch(err => { statusEl.textContent = 'Failed: ' + err.message; });
+  });
 
   loadCategories();
   loadData();
+  loadIncome();
 </script>
 
 </body>
