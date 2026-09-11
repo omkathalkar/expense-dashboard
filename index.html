@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Expense Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1115;
+    --card: #171a21;
+    --border: #2a2e37;
+    --text: #e8e9ec;
+    --muted: #9aa0ab;
+    --accent: #1E6B3C;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 24px;
+  }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .sub { color: var(--muted); margin-bottom: 24px; font-size: 14px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .card h2 { font-size: 14px; color: var(--muted); margin: 0 0 8px; font-weight: 500; }
+  .stat { font-size: 28px; font-weight: 600; }
+  form { display: flex; gap: 8px; flex-wrap: wrap; }
+  input, select, button {
+    background: #0f1115;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+  }
+  input, select { flex: 1; min-width: 100px; }
+  button {
+    background: var(--accent);
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  button:hover { opacity: 0.9; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; }
+  .status { font-size: 13px; color: var(--muted); margin-top: 8px; min-height: 16px; }
+  canvas { max-height: 260px; }
+</style>
+</head>
+<body>
+
+<h1>Expense Dashboard</h1>
+<div class="sub" id="lastUpdated">Loading…</div>
+
+<div class="grid">
+  <div class="card">
+    <h2>Total spent (all time)</h2>
+    <div class="stat" id="totalAll">–</div>
+  </div>
+  <div class="card">
+    <h2>Total spent (this month)</h2>
+    <div class="stat" id="totalMonth">–</div>
+  </div>
+  <div class="card">
+    <h2>Add an expense</h2>
+    <form id="addForm">
+      <input type="number" step="0.01" id="amount" placeholder="Amount" required>
+      <select id="category"><option value="">Category…</option></select>
+      <input type="text" id="note" placeholder="Note">
+      <button type="submit">Add</button>
+    </form>
+    <div class="status" id="addStatus"></div>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="card">
+    <h2>Spend by category</h2>
+    <canvas id="categoryChart"></canvas>
+  </div>
+  <div class="card">
+    <h2>Spend over time</h2>
+    <canvas id="timeChart"></canvas>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Recent transactions</h2>
+  <table>
+    <thead><tr><th>Date</th><th>Amount</th><th>Category</th><th>Note</th></tr></thead>
+    <tbody id="txnBody"></tbody>
+  </table>
+</div>
+
+<script>
+  // ⚠️ Replace this with your deployed Apps Script Web App URL (ends in /exec)
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxF1zOBRLqrZHXRcjDJkZpAHdsjeCDZIEsU5NRBldUsNdsGfcnKGOk9s8zLH3P--h9Y/exec';
+
+  let categoryChart, timeChart;
+
+  // JSONP helper — avoids CORS issues between GitHub Pages and Apps Script
+  function jsonp(url, params) {
+    return new Promise((resolve, reject) => {
+      const cbName = 'cb_' + Math.random().toString(36).slice(2);
+      const query = new URLSearchParams({ ...params, callback: cbName }).toString();
+      const script = document.createElement('script');
+      window[cbName] = (data) => {
+        resolve(data);
+        delete window[cbName];
+        script.remove();
+      };
+      script.onerror = () => reject(new Error('Request failed'));
+      script.src = url + '?' + query;
+      document.body.appendChild(script);
+    });
+  }
+
+  function money(n) {
+    return n.toFixed(2) + ' €';
+  }
+
+  function render(expenses) {
+    const now = new Date();
+    const monthKey = now.getFullYear() + '-' + now.getMonth();
+
+    let totalAll = 0, totalMonth = 0;
+    const byCategory = {};
+    const byDay = {};
+
+    expenses.forEach(exp => {
+      const d = new Date(exp.date);
+      totalAll += exp.amount;
+      if (d.getFullYear() + '-' + d.getMonth() === monthKey) {
+        totalMonth += exp.amount;
+      }
+      byCategory[exp.category] = (byCategory[exp.category] || 0) + exp.amount;
+      const dayKey = d.toISOString().slice(0, 10);
+      byDay[dayKey] = (byDay[dayKey] || 0) + exp.amount;
+    });
+
+    document.getElementById('totalAll').textContent = money(totalAll);
+    document.getElementById('totalMonth').textContent = money(totalMonth);
+    document.getElementById('lastUpdated').textContent =
+      expenses.length + ' transactions · updated ' + now.toLocaleTimeString();
+
+    // Category pie chart
+    const catLabels = Object.keys(byCategory);
+    const catValues = Object.values(byCategory);
+    if (categoryChart) categoryChart.destroy();
+    categoryChart = new Chart(document.getElementById('categoryChart'), {
+      type: 'pie',
+      data: {
+        labels: catLabels,
+        datasets: [{ data: catValues }]
+      },
+      options: { plugins: { legend: { labels: { color: '#e8e9ec' } } } }
+    });
+
+    // Time line chart, sorted by date
+    const dayLabels = Object.keys(byDay).sort();
+    const dayValues = dayLabels.map(d => byDay[d]);
+    if (timeChart) timeChart.destroy();
+    timeChart = new Chart(document.getElementById('timeChart'), {
+      type: 'line',
+      data: {
+        labels: dayLabels,
+        datasets: [{ label: 'Spend', data: dayValues, borderColor: '#1E6B3C', tension: 0.3 }]
+      },
+      options: {
+        scales: {
+          x: { ticks: { color: '#9aa0ab' } },
+          y: { ticks: { color: '#9aa0ab' } }
+        },
+        plugins: { legend: { display: false } }
+      }
+    });
+
+    // Recent transactions table (most recent first)
+    const sorted = [...expenses].sort((a, b) => new Date(b.date) - new Date(a.date));
+    document.getElementById('txnBody').innerHTML = sorted.slice(0, 15).map(exp => `
+      <tr>
+        <td>${new Date(exp.date).toLocaleDateString()}</td>
+        <td>${money(exp.amount)}</td>
+        <td>${exp.category}</td>
+        <td>${exp.note || ''}</td>
+      </tr>
+    `).join('');
+  }
+
+  function loadData() {
+    jsonp(SCRIPT_URL, { action: 'list' })
+      .then(res => {
+        if (res.status === 'ok') render(res.data);
+        else document.getElementById('lastUpdated').textContent = 'Error: ' + res.message;
+      })
+      .catch(err => {
+        document.getElementById('lastUpdated').textContent = 'Failed to load: ' + err.message;
+      });
+  }
+
+  document.getElementById('addForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const amount = document.getElementById('amount').value;
+    const category = document.getElementById('category').value || 'Uncategorized';
+    const note = document.getElementById('note').value;
+    const statusEl = document.getElementById('addStatus');
+    statusEl.textContent = 'Saving…';
+
+    jsonp(SCRIPT_URL, { action: 'add', amount, category, note })
+      .then(res => {
+        statusEl.textContent = res.status === 'ok' ? 'Added ✓' : 'Error: ' + res.message;
+        document.getElementById('addForm').reset();
+        loadData();
+      })
+      .catch(err => { statusEl.textContent = 'Failed: ' + err.message; });
+  });
+
+  function loadCategories() {
+    jsonp(SCRIPT_URL, { action: 'categories' })
+      .then(res => {
+        if (res.status !== 'ok') return;
+        const select = document.getElementById('category');
+        res.categories.forEach(cat => {
+          const opt = document.createElement('option');
+          opt.value = cat;
+          opt.textContent = cat;
+          select.appendChild(opt);
+        });
+      })
+      .catch(() => {});
+  }
+
+  loadCategories();
+  loadData();
+</script>
+
+</body>
+</html>
